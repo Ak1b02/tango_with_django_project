@@ -33,7 +33,7 @@ def add_page(request, category_name_slug):
                 page.views = 0
                 page.save()
                 
-                return redirect(reverse('rango:show+category', kwargs={'category_name_slug':category_name_slug}))
+                return redirect(reverse('rango:show_category', kwargs={'category_name_slug':category_name_slug}))
         else:
             print(form.errors)
     context_dict = {'form': form, 'category':category}
@@ -43,12 +43,10 @@ def index(request):
     
     category_list = Category.objects.order_by('-likes')[:5]
     context_dict = {}
-    context_dict['boldmessage'] = "Crunchy, creamy, cookie, candy, cupcake!"
+    context_dict['boldmessage'] = 'Crunchy, creamy, cookie, candy, cupcake!'
     context_dict['categories'] = Category.objects.order_by('-likes')[:5:-1]
     context_dict['pages'] = Page.objects.order_by('-views')[:5]
-    
-    print(context_dict['categories'][0].getviewlikes()[1])
-
+    print(type(context_dict['categories']))
     
     return render(request, 'rango/index.html', context=context_dict)
 
