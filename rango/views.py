@@ -9,23 +9,30 @@ from rango.forms import UserForm, UserProfileForm
 from django.http import HttpResponse
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from datetime import datetime
 
 # Create your views here.
 
+
 @login_required
 def restricted(request):
-    return render(request, 'rango/restricted.html', context={'message': "Since you're logged in, you can see this text!"})
+    return render(
+        request,
+        "rango/restricted.html",
+        context={"message": "Since you're logged in, you can see this text!"},
+    )
+
 
 @login_required
 def user_logout(request):
     # Since we know the user is logged in, we can now just log them out.
     logout(request)
     # Take the user back to the homepage.
-    return redirect(reverse('rango:index'))
+    return redirect(reverse("rango:index"))
 
 
 def user_login(request):
-    if request.method == 'POST':
+    if request.method == "POST":
         # Gather the username and password provided by the user.
         # This information is obtained from the login form.
         # We use request.POST.get('<variable>') as opposed
@@ -33,8 +40,8 @@ def user_login(request):
         # request.POST.get('<variable>') returns None if the
         # value does not exist, while request.POST['<variable>']
         # will raise a KeyError exception.
-        username = request.POST.get('username')
-        password = request.POST.get('password')
+        username = request.POST.get("username")
+        password = request.POST.get("password")
         # Use Django's machinery to attempt to see if the username/password
         # combination is valid - a User object is returned if it is.
         user = authenticate(username=username, password=password)
@@ -47,7 +54,7 @@ def user_login(request):
                 # If the account is valid and active, we can log the user in.
                 # We'll send the user back to the homepage.
                 login(request, user)
-                return redirect(reverse('rango:index'))
+                return redirect(reverse("rango:index"))
             else:
                 # An inactive account was used - no logging in!
                 return HttpResponse("Your Rango account is disabled.")
@@ -58,15 +65,13 @@ def user_login(request):
     else:
         # No context variables to pass to the template system, hence the
         # blank dictionary object...
-        return render(request, 'rango/login.html')
-
-
+        return render(request, "rango/login.html")
 
 
 def register(request):
     registered = False
-    
-    if request.method =='POST':
+
+    if request.method == "POST":
         user_form = UserForm(request.POST)
         profile_form = UserProfileForm(request.POST)
 
@@ -74,23 +79,32 @@ def register(request):
             user = user_form.save()
             user.set_password(user.password)
             user.save()
-            
+
             profile = profile_form.save(commit=False)
             profile.user = user
-            
-            if 'picture' in request.FILES:
-                profile.picture = request.FILES['picture']
-            
+
+            if "picture" in request.FILES:
+                profile.picture = request.FILES["picture"]
+
             profile.save()
-            
+
             registered = True
         else:
             print(user_form.errors, profile_form.errors)
     else:
         user_form = UserForm()
         profile_form = UserProfileForm()
-        
-    return render(request, 'rango/register.html', context={'user_form': user_form, 'profile_form': profile_form, 'registered': registered})
+
+    return render(
+        request,
+        "rango/register.html",
+        context={
+            "user_form": user_form,
+            "profile_form": profile_form,
+            "registered": registered,
+        },
+    )
+
 
 @login_required
 def add_page(request, category_name_slug):
@@ -100,69 +114,134 @@ def add_page(request, category_name_slug):
         category = None
 
     if category is None:
-        return redirect('/rango/')
-    
+        return redirect("/rango/")
+
     form = PageForm()
-    
-    if request.method == 'POST':
+
+    if request.method == "POST":
         form = PageForm(request.POST)
-        
+
         if form.is_valid():
             if category:
                 page = form.save(commit=False)
                 page.category = category
                 page.views = 0
                 page.save()
-                
-                return redirect(reverse('rango:show_category', kwargs={'category_name_slug':category_name_slug}))
+
+                return redirect(
+                    reverse(
+                        "rango:show_category",
+                        kwargs={"category_name_slug": category_name_slug},
+                    )
+                )
         else:
             print(form.errors)
-    context_dict = {'form': form, 'category':category}
-    return render(request, 'rango/add_page.html', context_dict)
+    context_dict = {"form": form, "category": category}
+    return render(request, "rango/add_page.html", context_dict)
+
 
 def index(request):
-    
-    category_list = Category.objects.order_by('-likes')[:5]
+    category_list = Category.objects.order_by("-likes")[:5]
+    page_list = Page.objects.order_by("-views")[:5]
     context_dict = {}
-    context_dict['boldmessage'] = 'Crunchy, creamy, cookie, candy, cupcake!'
-    context_dict['categories'] = Category.objects.order_by('-likes')[:5:-1]
-    context_dict['pages'] = Page.objects.order_by('-views')[:5]
-    print(type(context_dict['categories']))
+    context_dict["boldmessage"] = "Crunchy, creamy, cookie, candy, cupcake!"
+    context_dict["categories"] = category_list
+    context_dict["pages"] = page_list
+
+    # Return response back to the user, updating any cookies that need changed.
+
+    # A helper method
+    def get_server_side_cookie(request, cookie, default_val=None):
+        val = request.session.get(cookie)
+        if not val:
+            val = default_val
+        return val
+
+    def visitor_cookie_handler(request):
+        visits = int(get_server_side_cookie(request, "visits", "1"))
+        last_visit_cookie = get_server_side_cookie(
+            request, "last_visit", str(datetime.now())
+        )
+        last_visit_time = datetime.strptime(last_visit_cookie[:-7], "%Y-%m-%d %H:%M:%S")
+        # If it's been more than a day since the last visit...
+        if (datetime.now() - last_visit_time).days > 0:
+            visits = visits + 1
+            # Update the last visit cookie now that we have updated the count
+            request.session["last_visit"] = str(datetime.now())
+        else:
+            visits = 1
+            # Set the last visit cookie
+            request.session["last_visit"] = last_visit_cookie
+        # Update/set the visits cookie
+        request.session["visits"] = visits
+
+    visitor_cookie_handler(request)
     
-    return render(request, 'rango/index.html', context=context_dict)
+    # Obtain our Response object early so we can add cookie information.
+    response = render(request, "rango/index.html", context=context_dict)
+
+    return response
+
 
 def about(request):
-    return render(request, 'rango/about.html')
+    def get_server_side_cookie(request, cookie, default_val=None):
+        val = request.session.get(cookie)
+        if not val:
+            val = default_val
+        return val
+    
+    def visitor_cookie_handler(request):
+        visits = int(get_server_side_cookie(request, "visits", "1"))
+        last_visit_cookie = get_server_side_cookie(
+            request, "last_visit", str(datetime.now())
+        )
+        last_visit_time = datetime.strptime(last_visit_cookie[:-7], "%Y-%m-%d %H:%M:%S")
+        # If it's been more than a day since the last visit...
+        if (datetime.now() - last_visit_time).days > 0:
+            visits = visits + 1
+            # Update the last visit cookie now that we have updated the count
+            request.session["last_visit"] = str(datetime.now())
+        else:
+            visits = 1
+            # Set the last visit cookie
+            request.session["last_visit"] = last_visit_cookie
+        # Update/set the visits cookie
+        request.session["visits"] = visits
+    
+    visitor_cookie_handler(request)
+    visits = {'visits': request.session["visits"]}
+    return render(request, "rango/about.html", visits)
+
 
 @login_required
 def add_category(request):
     form = CategoryForm()
-    
-    if request.method == 'POST':
+
+    if request.method == "POST":
         form = CategoryForm(request.POST)
-        
+
         if form.is_valid():
             form.save(commit=True)
-            
-            return redirect('/rango/')
+
+            return redirect("/rango/")
         else:
             print(form.errors)
-            
-    return render(request, 'rango/add_category.html', {'form':form})
+
+    return render(request, "rango/add_category.html", {"form": form})
+
+
 def show_category(request, category_name_slug):
     context_dict = {}
-    
+
     try:
         category = Category.objects.get(slug=category_name_slug)
-        
+
         pages = Page.objects.filter(category=category)
-        
-        context_dict['pages'] = pages
-        context_dict['category'] = category
+
+        context_dict["pages"] = pages
+        context_dict["category"] = category
     except Category.DoesNotExist:
-        context_dict['category'] = None
-        context_dict['pages'] = None
-    
-    return render(request, 'rango/category.html', context=context_dict)
+        context_dict["category"] = None
+        context_dict["pages"] = None
 
-
+    return render(request, "rango/category.html", context=context_dict)
